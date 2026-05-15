@@ -15,19 +15,25 @@ def get_market_regime():
     if df.empty:
         return "UNKNOWN"
 
-    # Fix multi-index issue
+    # Fix yfinance multi-index columns
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
     df = df.dropna()
 
+    # Convert to numeric safely
     close = pd.to_numeric(df["Close"], errors="coerce")
+
+    # Force series
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+
     ema50 = close.ewm(span=50).mean()
     ema200 = close.ewm(span=200).mean()
 
-    latest_close = float(close.iloc[-1])
-    latest_ema50 = float(ema50.iloc[-1])
-    latest_ema200 = float(ema200.iloc[-1])
+    latest_close = close.iloc[-1]
+    latest_ema50 = ema50.iloc[-1]
+    latest_ema200 = ema200.iloc[-1]
 
     if latest_close > latest_ema50 > latest_ema200:
         return "BULL"
