@@ -1,42 +1,38 @@
-from core.utils import load_data
-from core.indicators import compute_indicators
+import yfinance as yf
+import pandas as pd
 
 
 def get_market_regime():
 
-    df = load_data("^NSEI", interval="1d", period="2y")
+    df = yf.download(
+        "^NSEI",
+        period="1y",
+        interval="1d",
+        auto_adjust=True,
+        progress=False,
+    )
 
     if df.empty:
         return "UNKNOWN"
 
-    df = compute_indicators(df)
+    # Fix multi-index issue
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
 
-    close = float(df["Close"].iloc[-1])
+    df = df.dropna()
 
-    ema21 = float(df["EMA21"].iloc[-1])
-    ema50 = float(df["EMA50"].iloc[-1])
-    ema200 = float(df["EMA200"].iloc[-1])
+    close = pd.to_numeric(df["Close"], errors="coerce")
+    ema50 = close.ewm(span=50).mean()
+    ema200 = close.ewm(span=200).mean()
 
-    rsi = float(df["RSI"].iloc[-1])
+    latest_close = float(close.iloc[-1])
+    latest_ema50 = float(ema50.iloc[-1])
+    latest_ema200 = float(ema200.iloc[-1])
 
-    if (
-        close > ema21 and
-        close > ema50 and
-        close > ema200 and
-        rsi > 60
-    ):
-        return "BULL_EXPANSION"
+    if latest_close > latest_ema50 > latest_ema200:
+        return "BULL"
 
-    if (
-        close > ema200 and
-        rsi > 50
-    ):
-        return "BULLISH"
+    elif latest_close < latest_ema50 < latest_ema200:
+        return "BEAR"
 
-    if (
-        close < ema200 and
-        rsi < 40
-    ):
-        return "BEARISH"
-
-    return "RANGEBOUND"
+    return "SIDEWAYS"
