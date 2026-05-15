@@ -1,0 +1,14 @@
+streamlit
+pandas
+numpy
+yfinance
+plotly
+scipy
+ta
+statsmodels
+scikit-learn
+requests
+python-dateutil
+pytz
+numba
+tqdm
