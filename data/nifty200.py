@@ -1,1 +1,22 @@
-
+NIFTY200 = [
+    "RELIANCE.NS",
+    "TCS.NS",
+    "INFY.NS",
+    "HDFCBANK.NS",
+    "ICICIBANK.NS",
+    "SBIN.NS",
+    "LT.NS",
+    "ITC.NS",
+    "BHARTIARTL.NS",
+    "KOTAKBANK.NS",
+    "AXISBANK.NS",
+    "ASIANPAINT.NS",
+    "MARUTI.NS",
+    "SUNPHARMA.NS",
+    "ULTRACEMCO.NS",
+    "TITAN.NS",
+    "BAJFINANCE.NS",
+    "HCLTECH.NS",
+    "WIPRO.NS",
+    "POWERGRID.NS"
+]
