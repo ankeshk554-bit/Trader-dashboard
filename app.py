@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from core.utils import load_data
-from core.utils import compute_indicators
+from core.indicators import compute_indicators
 from core.market_regime import get_market_regime
 from core.scanner import run_universe_scan
 from core.charts import institutional_chart
