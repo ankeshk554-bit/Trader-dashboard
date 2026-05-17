@@ -1,36 +1,44 @@
+import yfinance as yf
 import pandas as pd
+import ta
 
 
-def run_backtest(signals):
+def run_backtest(symbol):
 
-    if len(signals) == 0:
-        return pd.DataFrame()
+    df = yf.download(
+        symbol,
+        period="5y",
+        auto_adjust=True,
+        progress=False
+    )
 
-    capital_curve = []
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
 
-    capital = 100000
+    if df.empty:
+        return None
 
-    for sig in signals:
+    df["EMA50"] = ta.trend.ema_indicator(df["Close"], window=50)
+    df["EMA200"] = ta.trend.ema_indicator(df["Close"], window=200)
 
-        rr = sig["RR"]
+    df["Signal"] = 0
 
-        confidence = sig["CONFIDENCE"]
+    df.loc[
+        df["EMA50"] > df["EMA200"],
+        "Signal"
+    ] = 1
 
-        if confidence >= 70:
-            pnl = capital * 0.02 * rr
-        else:
-            pnl = -capital * 0.01
+    df["Returns"] = df["Close"].pct_change()
 
-        capital += pnl
+    df["Strategy"] = (
+        df["Signal"].shift(1)
+        * df["Returns"]
+    )
 
-        capital_curve.append(
-            {
-                "SYMBOL": sig["SYMBOL"],
-                "SETUP": sig["SETUP"],
-                "CONFIDENCE": confidence,
-                "RR": rr,
-                "CAPITAL": capital,
-            }
-        )
+    total_return = (
+        (1 + df["Strategy"]).cumprod().iloc[-1] - 1
+    ) * 100
 
-    return pd.DataFrame(capital_curve)
+    return {
+        "Total Return": round(total_return, 2)
+    }
