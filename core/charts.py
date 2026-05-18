@@ -1,89 +1,97 @@
 import plotly.graph_objects as go
+from core.indicators import detect_vcp
 
-from plotly.subplots import make_subplots
+def plot_chart(df, symbol, trades_df=None):
+    fig = go.Figure()
 
+    # -------------------------
+    # Candlesticks
+    # -------------------------
+    fig.add_trace(go.Candlestick(
+        x=df.index,
+        open=df["Open"], high=df["High"],
+        low=df["Low"], close=df["Close"],
+        name="Price"
+    ))
 
-def institutional_chart(df, ticker):
+    # -------------------------
+    # EMA200
+    # -------------------------
+    if "EMA200" in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["EMA200"],
+            mode="lines",
+            line=dict(color="orange", width=2),
+            name="EMA200"
+        ))
 
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        shared_xaxes=True,
-        row_heights=[0.75, 0.25],
-        vertical_spacing=0.03,
-    )
+    # -------------------------
+    # AVWAP
+    # -------------------------
+    if "AVWAP" in df.columns:
+        fig.add_trace(go.Scatter(
+            x=df.index, y=df["AVWAP"],
+            mode="lines",
+            line=dict(color="purple", width=2),
+            name="AVWAP"
+        ))
 
-    # =====================================================
-    # CANDLESTICK
-    # =====================================================
+    # -------------------------
+    # VCP Pivot Marker
+    # -------------------------
+    vcp = detect_vcp(df)
+    if vcp["VCP_Flag"]:
+        pivot_idx = df.index[-1]
+        pivot_price = vcp["Pivot"]
 
-    fig.add_trace(
-        go.Candlestick(
-            x=df.index,
-            open=df["Open"],
-            high=df["High"],
-            low=df["Low"],
-            close=df["Close"],
-            name="Price",
-        ),
-        row=1,
-        col=1,
-    )
+        marker_color = "green" if vcp["VolumeDryUp"] else "red"
+        marker_text = f"VCP Stage {vcp['Stage']} | Vol Dry-Up: {vcp['VolumeDryUp']}"
 
-    # =====================================================
-    # EMAs
-    # =====================================================
+        fig.add_trace(go.Scatter(
+            x=[pivot_idx],
+            y=[pivot_price],
+            mode="markers+text",
+            marker=dict(symbol="diamond", size=14, color=marker_color),
+            text=[marker_text],
+            textposition="top center",
+            name="VCP Pivot"
+        ))
 
-    for col, color in [
-        ("EMA21", "cyan"),
-        ("EMA50", "orange"),
-        ("EMA200", "yellow"),
-        ("AVWAP", "magenta"),
-    ]:
+    # -------------------------
+    # Backtest Trade Markers
+    # -------------------------
+    if trades_df is not None and not trades_df.empty:
+        # Entry markers
+        fig.add_trace(go.Scatter(
+            x=trades_df["EntryDate"],
+            y=trades_df["EntryPrice"],
+            mode="markers+text",
+            marker=dict(symbol="triangle-up", size=12, color="lime"),
+            text=["Entry"] * len(trades_df),
+            textposition="bottom center",
+            name="Entries"
+        ))
 
-        if col in df.columns:
+        # Exit markers
+        fig.add_trace(go.Scatter(
+            x=trades_df["ExitDate"],
+            y=trades_df["ExitPrice"],
+            mode="markers+text",
+            marker=dict(symbol="triangle-down", size=12, color="red"),
+            text=trades_df["Result"],
+            textposition="top center",
+            name="Exits"
+        ))
 
-            fig.add_trace(
-                go.Scatter(
-                    x=df.index,
-                    y=df[col],
-                    mode="lines",
-                    name=col,
-                    line=dict(
-                        width=1.5,
-                        color=color,
-                    ),
-                ),
-                row=1,
-                col=1,
-            )
-
-    # =====================================================
-    # VOLUME
-    # =====================================================
-
-    fig.add_trace(
-        go.Bar(
-            x=df.index,
-            y=df["Volume"],
-            name="Volume",
-        ),
-        row=2,
-        col=1,
-    )
-
-    # =====================================================
-    # STYLING
-    # =====================================================
-
+    # -------------------------
+    # Layout
+    # -------------------------
     fig.update_layout(
-        template="plotly_dark",
-        title=f"{ticker} — Institutional Dashboard",
-        xaxis_rangeslider_visible=False,
-        height=850,
-        legend=dict(
-            orientation="h",
-        ),
+        title=f"{symbol} Chart with VCP + Trades",
+        height=700,
+        xaxis=dict(title="Date"),
+        yaxis=dict(title="Price"),
+        showlegend=True
     )
 
     return fig
