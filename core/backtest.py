@@ -1,18 +1,29 @@
 import numpy as np
 import pandas as pd
 from core.indicators import detect_vcp
+from core.data_loader import fetch_data
 
-def run_backtest(df, risk_per_trade=1000):
+def run_backtest(df, symbol, risk_per_trade=1000):
     trades = []
     position = None
+
+    # Precompute weekly data for multi‑timeframe filter
+    df_weekly = fetch_data(symbol, interval="1wk", lookback="1y")
+    vcp_weekly = detect_vcp(df_weekly)
 
     for i in range(1, len(df)):
         candle = df.iloc[i]
 
-        # Example entry: bullish divergence + VCP
+        # -------------------------
+        # Entry Condition
+        # -------------------------
         if candle.get('Signal') == "Bullish":
-            vcp = detect_vcp(df.iloc[:i])
-            if vcp["VCP_Flag"] and vcp["VolumeDryUp"]:
+            vcp_daily = detect_vcp(df.iloc[:i])
+
+            # Require BOTH daily + weekly VCP confirmation
+            if (vcp_daily["VCP_Flag"] and vcp_daily["VolumeDryUp"] and
+                vcp_weekly["VCP_Flag"] and vcp_weekly["VolumeDryUp"]):
+
                 entry_price = candle['Open']
                 stop_loss = entry_price - 1.5 * candle['ATR']
                 target = entry_price + 2 * candle['ATR']
@@ -26,10 +37,13 @@ def run_backtest(df, risk_per_trade=1000):
                     "StopLoss": stop_loss,
                     "Target": target,
                     "Qty": qty,
-                    "Stage": vcp["Stage"]
+                    "StageDaily": vcp_daily["Stage"],
+                    "StageWeekly": vcp_weekly["Stage"]
                 }
 
-        # Exit logic
+        # -------------------------
+        # Exit Condition
+        # -------------------------
         if position:
             if candle['Low'] <= position['StopLoss']:
                 trades.append({
@@ -51,32 +65,3 @@ def run_backtest(df, risk_per_trade=1000):
                 position = None
 
     return pd.DataFrame(trades)
-
-# -------------------------
-# 🚀 Performance Metrics
-# -------------------------
-def performance_metrics(trades_df):
-    if trades_df.empty:
-        return {"WinRate": 0, "Expectancy": 0, "AvgR": 0, "TotalPnL": 0}
-
-    wins = trades_df[trades_df['Result'] == "Win"]
-    losses = trades_df[trades_df['Result'] == "Loss"]
-
-    win_rate = len(wins) / len(trades_df) * 100
-    total_pnl = trades_df['PnL'].sum()
-
-    # R multiples (PnL / risk per trade)
-    trades_df['R'] = trades_df['PnL'] / 1000
-    avg_r = trades_df['R'].mean()
-
-    # Expectancy = (Win% * AvgWin) - (Loss% * AvgLoss)
-    avg_win = wins['PnL'].mean() if not wins.empty else 0
-    avg_loss = abs(losses['PnL'].mean()) if not losses.empty else 0
-    expectancy = (win_rate/100 * avg_win) - ((100-win_rate)/100 * avg_loss)
-
-    return {
-        "WinRate": round(win_rate, 2),
-        "Expectancy": round(expectancy, 2),
-        "AvgR": round(avg_r, 2),
-        "TotalPnL": round(total_pnl, 2)
-    }
