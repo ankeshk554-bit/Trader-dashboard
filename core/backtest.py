@@ -1,44 +1,57 @@
-import yfinance as yf
+import numpy as np
 import pandas as pd
-import ta
+from core.indicators import detect_vcp
 
+def run_backtest(df, risk_per_trade=1000):
+    trades = []
+    position = None
 
-def run_backtest(symbol):
+    for i in range(1, len(df)):
+        candle = df.iloc[i]
+        prev = df.iloc[i-1]
 
-    df = yf.download(
-        symbol,
-        period="5y",
-        auto_adjust=True,
-        progress=False
-    )
+        # -------------------------
+        # Entry Condition
+        # -------------------------
+        # Example: bullish divergence already detected in df['Signal']
+        if candle['Signal'] == "Bullish":
+            vcp = detect_vcp(df.iloc[:i])
+            if vcp["VCP_Flag"] and vcp["VolumeDryUp"]:
+                entry_price = candle['Open']
+                stop_loss = entry_price - 1.5 * candle['ATR']
+                target = entry_price + 2 * candle['ATR']
 
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+                risk_per_share = entry_price - stop_loss
+                qty = int(risk_per_trade / risk_per_share)
 
-    if df.empty:
-        return None
+                position = {
+                    "EntryDate": candle.name,
+                    "EntryPrice": entry_price,
+                    "StopLoss": stop_loss,
+                    "Target": target,
+                    "Qty": qty,
+                    "Stage": vcp["Stage"]
+                }
 
-    df["EMA50"] = ta.trend.ema_indicator(df["Close"], window=50)
-    df["EMA200"] = ta.trend.ema_indicator(df["Close"], window=200)
+        # -------------------------
+        # Exit Condition
+        # -------------------------
+        if position:
+            if candle['Low'] <= position['StopLoss']:
+                trades.append({
+                    **position,
+                    "ExitDate": candle.name,
+                    "ExitPrice": position['StopLoss'],
+                    "Result": "Loss"
+                })
+                position = None
+            elif candle['High'] >= position['Target']:
+                trades.append({
+                    **position,
+                    "ExitDate": candle.name,
+                    "ExitPrice": position['Target'],
+                    "Result": "Win"
+                })
+                position = None
 
-    df["Signal"] = 0
-
-    df.loc[
-        df["EMA50"] > df["EMA200"],
-        "Signal"
-    ] = 1
-
-    df["Returns"] = df["Close"].pct_change()
-
-    df["Strategy"] = (
-        df["Signal"].shift(1)
-        * df["Returns"]
-    )
-
-    total_return = (
-        (1 + df["Strategy"]).cumprod().iloc[-1] - 1
-    ) * 100
-
-    return {
-        "Total Return": round(total_return, 2)
-    }
+    return pd.DataFrame(trades)
