@@ -1,67 +1,68 @@
-import numpy as np
+import yfinance as yf
 import pandas as pd
-from core.indicators import detect_vcp
-from core.data_loader import fetch_data
+import ta
 
-def run_backtest(df, symbol, risk_per_trade=1000):
-    trades = []
-    position = None
 
-    # Precompute weekly data for multi‑timeframe filter
-    df_weekly = fetch_data(symbol, interval="1wk", lookback="1y")
-    vcp_weekly = detect_vcp(df_weekly)
+def clean_columns(df):
 
-    for i in range(1, len(df)):
-        candle = df.iloc[i]
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
 
-        # -------------------------
-        # Entry Condition
-        # -------------------------
-        if candle.get('Signal') == "Bullish":
-            vcp_daily = detect_vcp(df.iloc[:i])
+    return df
 
-            # Require BOTH daily + weekly VCP confirmation
-            if (vcp_daily["VCP_Flag"] and vcp_daily["VolumeDryUp"] and
-                vcp_weekly["VCP_Flag"] and vcp_weekly["VolumeDryUp"]):
 
-                entry_price = candle['Open']
-                stop_loss = entry_price - 1.5 * candle['ATR']
-                target = entry_price + 2 * candle['ATR']
+def run_backtest(symbol):
 
-                risk_per_share = entry_price - stop_loss
-                qty = int(risk_per_trade / risk_per_share)
+    try:
 
-                position = {
-                    "EntryDate": candle.name,
-                    "EntryPrice": entry_price,
-                    "StopLoss": stop_loss,
-                    "Target": target,
-                    "Qty": qty,
-                    "StageDaily": vcp_daily["Stage"],
-                    "StageWeekly": vcp_weekly["Stage"]
-                }
+        df = yf.download(
+            symbol,
+            period="5y",
+            auto_adjust=True,
+            progress=False
+        )
 
-        # -------------------------
-        # Exit Condition
-        # -------------------------
-        if position:
-            if candle['Low'] <= position['StopLoss']:
-                trades.append({
-                    **position,
-                    "ExitDate": candle.name,
-                    "ExitPrice": position['StopLoss'],
-                    "PnL": (position['StopLoss'] - position['EntryPrice']) * position['Qty'],
-                    "Result": "Loss"
-                })
-                position = None
-            elif candle['High'] >= position['Target']:
-                trades.append({
-                    **position,
-                    "ExitDate": candle.name,
-                    "ExitPrice": position['Target'],
-                    "PnL": (position['Target'] - position['EntryPrice']) * position['Qty'],
-                    "Result": "Win"
-                })
-                position = None
+        if df.empty:
+            return None
 
-    return pd.DataFrame(trades)
+        df = clean_columns(df)
+
+        df["EMA50"] = ta.trend.ema_indicator(
+            df["Close"],
+            window=50
+        )
+
+        df["EMA200"] = ta.trend.ema_indicator(
+            df["Close"],
+            window=200
+        )
+
+        df["Signal"] = 0
+
+        df.loc[
+            df["EMA50"] > df["EMA200"],
+            "Signal"
+        ] = 1
+
+        df["Returns"] = df["Close"].pct_change()
+
+        df["Strategy"] = (
+            df["Signal"].shift(1)
+            * df["Returns"]
+        )
+
+        total_return = (
+            (
+                1 + df["Strategy"]
+            ).cumprod().iloc[-1] - 1
+        ) * 100
+
+        return {
+            "Total Return": round(total_return, 2)
+        }
+
+    except Exception as e:
+
+        print(f"Backtest Error: {e}")
+
+        return None
